@@ -2,13 +2,13 @@ FROM node:20
 
 WORKDIR /usr/src/app
 
-COPY package*.json ./
-COPY tsconfig.json ./
+# すべてのファイルをコピー
+COPY . .
 
+# 依存関係のインストール
 RUN npm install
 
-COPY src ./src
-
+# TypeScriptのビルド
 RUN npm run build
 
 EXPOSE 8080
