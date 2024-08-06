@@ -91,12 +91,10 @@ async function handleMessage(event: any, context: any, client: WebClient, say: a
     const threadTs = (event as any).thread_ts || event.ts;
     const userMessage = event.text;
 
-    // ボットのメッセージには反応しない
     if (event.bot_id) {
       return;
     }
 
-    // スレッド内の会話の場合のみタイピングインジケーターを表示
     if (event.thread_ts) {
       typingTs = await showTypingIndicator(client, event.channel, threadTs);
     }
@@ -107,24 +105,41 @@ async function handleMessage(event: any, context: any, client: WebClient, say: a
       {
         role: 'system',
         content:
-          'あなたは丁寧で親切なアシスタントです。マークダウン形式を使わずに回答してください。',
+          'あなたは丁寧で親切なアシスタントです。通常のマークダウン記法を使用して回答してください。',
       },
       ...conversationHistory,
       { role: 'user', content: userMessage },
     ] as OpenAI.Chat.ChatCompletionMessageParam[];
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini', // Use the appropriate model
+      model: 'gpt-4o-mini',
       messages: messages,
     });
 
     let botResponse = completion.choices[0].message.content;
 
     if (botResponse) {
-      // マークダウンを除去
-      botResponse = removeMarkdown(botResponse);
+      // コードブロックの処理（変更なし）
+      botResponse = botResponse.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+        lang = lang || '';
+        return '```' + lang + '\n' + code.trim() + '\n```';
+      });
 
-      // タイピングインジケーターを非表示（スレッド内の会話の場合のみ）
+      // 見出しを太字に変換
+      botResponse = botResponse.replace(/^(#{1,6})\s+(.+)$/gm, '*$2*\n');
+
+      // 太字をノーマルテキストに変換（見出し以外）
+      botResponse = botResponse.replace(/(?<!^)\*\*(.*?)\*\*/g, '$1');
+
+      // 箇条書きをSlackフォーマットに変換
+      botResponse = botResponse.replace(/^[-*+]\s+/gm, '• ');
+
+      // 番号付きリストをSlackフォーマットに変換
+      botResponse = botResponse.replace(/^(\d+)\.?\s+/gm, '$1. ');
+
+      // リンクの処理
+      botResponse = botResponse.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 $2');
+
       if (typingTs) {
         await hideTypingIndicator(client, event.channel, typingTs);
       }
@@ -136,7 +151,6 @@ async function handleMessage(event: any, context: any, client: WebClient, say: a
     }
   } catch (error) {
     console.error(error);
-    // エラーが発生した場合もタイピングインジケーターを非表示（スレッド内の会話の場合のみ）
     if (typingTs) {
       await hideTypingIndicator(client, event.channel, typingTs);
     }
